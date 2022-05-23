@@ -16,7 +16,14 @@ type vehicule = P of int*distance*int | V of int*int*int*int*int*int;;(*
                                                          - Sommet d'arivée
                                            *)
 
-(* Attention à mettre à jour lors des ittération la distance jsq la prochaine station et la prochaine station des pads *)
+let rec fast_exp x n = match n with
+  | 0 -> 1
+  | _ -> let y = x*x in
+    if n mod 2 = 0 then
+      fast_exp y (n/2)
+    else
+      y * (fast_exp y (n/2))
+;;
 
 (* Defining arithmetic operators for the distance type *)
 let (++) d1 d2 = match d1, d2 with
@@ -142,7 +149,7 @@ let v3_1 = V((dist_to_int (get_distance graph 3 1))/v_max,0,0,0,3,1);;
 let car_array = [| v1_2; v2_3; v1_3; v3_1 |];;
 
 (* On calcule chaque itération à un intervale de dt *)
-let sim_terminate_on_exit_no_entry graph car_array dt =
+let sim_terminate_on_exit_no_entry graph car_array dt stop_time =
   (* C'est la fonction principale, elle s'arrête quand il n'y a plus de voitures dans le tableau car_array. A chaque ittération, elle met à jour les paramètres de chaqu'une des voitures et les transforme en pads si beusion est. *)
   (* Les valeurs de chaque voiture sont stockés dans 6 collones de la matrice data. Pour ne pas avoir de problèmes de redimensionnement, on prend comme dimension la somme des temps optimaux * 2 divisé par dt. L'hypothèse est que nous ne pouvons pas aire pire que 2*le tmps opt.*)
 
@@ -160,7 +167,7 @@ let sim_terminate_on_exit_no_entry graph car_array dt =
   let stop_array = Array.make num_cars 0 in (* Tableau qui contient le # de tours que un vehicule s'arrête. *)
   let num_stations = Array.length graph in
   let dim = get_dimensions num_cars car_array in
-  let data = Array.make_matrix dim dim 0 in
+  let data = Array.make_matrix dim (6*num_cars + 1) 0 in (* 6 colonnes pour les voitures et 1 pour le # d'ittération. Cette approche est très coûteuse en mémoire vive car il faut garder en mémoire toutes les données. Il faut l'optimiser ou faire un data dump après n opérations, n une valeur à trouver empiriquement. *)
 
   let terminate_loop =
     let rec aux acc i =
@@ -172,28 +179,92 @@ let sim_terminate_on_exit_no_entry graph car_array dt =
     in aux true 0
   in
 
-  let rec loop =
+  let update_data iter =
+    data.(iter).(6*num_cars) <- 0;
+    for i=0 to (num_cars - 1) do
+      match car_array.(i) with
+      | P(vit_act, dist_p, stat_p) ->
+        data.(iter).(6*i) <- vit_act;
+        data.(iter).(6*i+1) <- (dist_to_int dist_p);
+        data.(iter).(6*i+2) <- stat_p;
+        data.(iter).(6*i+3) <- (-1);
+        data.(iter).(6*i+4) <- (-1);
+        data.(iter).(6*i+5) <- (-1);
+      | V(tmps_opt, tmps_circ, vit_act, vit_moy, stat_dep, stat_arr) ->
+        data.(iter).(6*i) <- tmps_opt;
+        data.(iter).(6*i+1) <- tmps_circ;
+        data.(iter).(6*i+2) <- vit_act;
+        data.(iter).(6*i+3) <- vit_moy;
+        data.(iter).(6*i+4) <- stat_dep;
+        data.(iter).(6*i+5) <- stat_arr;
+    done;
+  in
+
+  let write_data file =
+    (* Write message to file *)
+    let oc = open_out file in
+    (* create or truncate file, return channel *)
+    Printf.fprintf oc "%s\\n" message;
+    for car = 0 to num_cars do
+
+    for iter = 0 to dim do      (* Ittering over each line *)
+
+    close_out oc;
+
+  let rec loop n =
     if not terminate_loop then
-      (* On met à jour les données de chaque voiture. *)
-      for i=0 to num_cars-1 do
-        match car_array.(i) with
-        | P(vit_act, dist_p, stat_p) ->
-          let speed = speed_control graph i car_array dt in
-          let dist = dist_p -- (D(speed*dt)) in (* Ici interviennent les défauts de la discretisation, on considére que la voiture arrive à la vitesse demandé instantanement. C'est pour ca que le speed control doit être bein fait.  *)
-          if (dist_to_int dist) = 0 then
-            let next_station = get_next_station i num_stations in
-            car_array.(i) <- P(speed, dist, next_station);
-          else
-            let next_station = stat_p in
-            car_array.(i) <- P(speed, dist, next_station);
-        | V(tmps_opt, tmps_circ, vit_act, vit_moy, stat_dep, stat_arr) ->
-          let speed = speed_control graph i car_array dt in
-          let dist_to_dest = get_dist_to_dest_idx graph i car_array in
-          if (dist_to_int dist_to_dest) = 0 then (* Attention aux erreurs de discretisation, il faudrait peut être un intervalle car la voiture pourrait ne pas s'arrêter exactement à la station *)
-            if 
-      done
+      begin
+        (* On met à jour les données de chaque voiture. *)
+        for i=0 to (num_cars-1) do
+          match car_array.(i) with
+          | P(vit_act, dist_p, stat_p) ->
+            let speed = speed_control graph i car_array dt in
+            let dist = dist_p -- (D(speed*dt)) in (* Ici interviennent les défauts de la discretisation, on considére que la voiture arrive à la vitesse demandé instantanement. C'est pour ça que le speed control doit être bein fait.  *)
+            if (dist_to_int dist) = 0 then
+              let next_station = get_next_station i num_stations in
+              car_array.(i) <- P(speed, dist, next_station);
+            else
+              let next_station = stat_p in
+              car_array.(i) <- P(speed, dist, next_station);
+          | V(tmps_opt, tmps_circ, vit_act, vit_moy, stat_dep, stat_arr) ->
+            let dist_to_dest = get_dist_to_dest_idx graph i car_array in
+            if ((dist_to_int dist_to_dest) = 10)&&(stop_array.(i) <> (-1) ) then (* stop array = -1 si la voiture s'est déjà arrêté. Attention aux erreurs de discretisation, il faudrait peut être un intervalle car la voiture pourrait ne pas s'arrêter exactement à la station *)
+              begin
+                if stop_array.(i) = 0 then (* Si la voiture ne s'est pas encore arrêté. *)
+                  begin
+                    stop_array.(i) <- stop_time / dt;
+                    let speed = 0 in
+                    car_array.(i) <- V(tmps_opt, tmps_circ+dt, 0, vit_moy*n/(n+1) + (fast_exp 2 (n-1))*speed/n*(n+1), stat_dep, stat_arr);
+                  end
+                else if stop_array.(i) = (-1) then (* Si la voiture doit repartir *)
+                  begin
+                    stop_array.(i) <- 0;
+                    let speed = speed_control graph i car_array dt in
+                    car_array.(i) <- V(tmps_opt, tmps_circ+dt, speed, vit_moy*n/(n+1) + (fast_exp 2 (n-1))*speed/n*(n+1), stat_dep, stat_arr)
+                  end
+                else if stop_array.(i) = 1 then             (* Si la voiture est à l'arrêt mais va reparit la prochaine ittération, la voiture se transforme en pad. *)
+                  begin
+                    stop_array.(i) <- (-1);
+                    let speed = 0 in
+                    let next_station = get_next_station stat_arr num_stations in
+                    let distance = get_distance graph stat_arr next_station in
+                    car_array.(i) <- P(speed, distance, next_station);
+                  end
+                else              (* Si la voiture est à l'arrêt mais ne va pas reparit la prochaine ittération *)
+                  begin
+                    stop_array.(i) <- (stop_array.(i) - 1);
+                    let speed = 0 in
+                    car_array.(i) <- V(tmps_opt, tmps_circ+dt, 0, vit_moy*n/(n+1) + (fast_exp 2 (n-1))*speed/n*(n+1), stat_dep, stat_arr)
+                  end
+              end
+        done;
+      end
+    else
+      
+
 
 
 graph;;
 disp_car v2_3;;
 
+o
