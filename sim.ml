@@ -138,16 +138,6 @@ let disp_car car = match car with
     print_string "=========================================================="; print_newline ();
 ;;
 
-(* Implementaiton du graph à 3 sommets. *)
-let graph = Array.make_matrix 3 3 (D(-1)) ;;
-
-let v1_2 = V((dist_to_int (get_distance graph 1 2))/v_max,0,0,0,1,2);;
-let v2_3 = V((dist_to_int (get_distance graph 2 3))/v_max,0,0,0,2,3);;
-let v1_3 = V((dist_to_int (get_distance graph 1 3))/v_max,0,0,0,1,3);;
-let v3_1 = V((dist_to_int (get_distance graph 3 1))/v_max,0,0,0,3,1);;
-
-let car_array = [| v1_2; v2_3; v1_3; v3_1 |];;
-
 (* On calcule chaque itération à un intervale de dt *)
 let sim_terminate_on_exit_no_entry graph car_array dt stop_time =
   (* C'est la fonction principale, elle s'arrête quand il n'y a plus de voitures dans le tableau car_array. A chaque ittération, elle met à jour les paramètres de chaqu'une des voitures et les transforme en pads si beusion est. *)
@@ -201,15 +191,27 @@ let sim_terminate_on_exit_no_entry graph car_array dt stop_time =
   in
 
   let write_data file =
-    (* Write message to file *)
     let oc = open_out file in
-    (* create or truncate file, return channel *)
-    Printf.fprintf oc "%s\\n" message;
+    (* Writing colmn names to file *)
     for car = 0 to num_cars do
+      Printf.fprintf oc "%s_%d/%s_%d," "Vehicle_optimal_time" car "Current_pad_speed" car;
+      Printf.fprintf oc "%s_%d/%s_%d," "Vehicle_circuit_time" car "Distance_to_destination_pad" car;
+      Printf.fprintf oc "%s_%d/%s_%d," "Vehicle_current_speed" car "Next_station_pad" car;
+      Printf.fprintf oc "%s_%d," "Vehicle_average_speed" car;
+      Printf.fprintf oc "%s_%d," "Vehicle_departure_station" car;
+      Printf.fprintf oc "%s_%d," "Vehicle_arrival_station" car;
+    done;
+    Printf.fprintf oc "%s\n" "Iteration";
 
-    for iter = 0 to dim do      (* Ittering over each line *)
-
+    (* Writing data to file *)
+    for iter = 0 to dim do
+      for col = 0 to (6*num_cars - 1) do
+        Printf.fprintf oc "%d," data.(iter).(col);
+      done;
+      Printf.fprintf oc "%d\n" iter;
+    done;
     close_out oc;
+  in
 
   let rec loop n =
     if not terminate_loop then
@@ -258,13 +260,29 @@ let sim_terminate_on_exit_no_entry graph car_array dt stop_time =
                   end
               end
         done;
+        update_data n;
+        loop (n+1);
       end
     else
-      
+      write_data "output.ml";
+  in
+  update_data 0;
+  loop 1;
+;;
 
+
+(* Implementaiton du graph à 3 sommets. *)
+let graph = Array.make_matrix 3 3 (D(-1)) ;;
+
+let v1_2 = V((dist_to_int (get_distance graph 1 2))/v_max,0,0,0,1,2);;
+disp_car v1_2;;
+let v2_3 = V((dist_to_int (get_distance graph 2 3))/v_max,0,0,0,2,3);;
+let v1_3 = V((dist_to_int (get_distance graph 1 3))/v_max,0,0,0,1,3);;
+let v3_1 = V((dist_to_int (get_distance graph 3 1))/v_max,0,0,0,3,1);;
+
+let car_array = [| v1_2; v2_3; v1_3; v3_1 |];;
 
 
 graph;;
 disp_car v2_3;;
 
-o
