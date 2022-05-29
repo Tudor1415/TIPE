@@ -1,6 +1,7 @@
 let v_max = 100 ;;                (* m/s *)
 let a_max  = 5;;                  (* m/s² *)
 let stop_time = 15;;              (* s *)
+let dt = 1;;
 
 type distance = Indef | D of int;; (* Distance in meters, distance non algebrique *)
 
@@ -11,7 +12,7 @@ type vehicule = P of int*distance*int | V of int*int*int*int*int*int;;(*
                                            V -> Voiture: - Temps jusqu'à l'arrivée optimal deupis le depart (constant) (s)
                                                          - Temps dans le circuit (s)
                                                          - Vitesse actuelle (m/s)
-                                                         - Vitesse moyenne (jusqu'à maintenant) (m/s)
+                                                         - Vitesse moyenne *10e6 (jusqu'à maintenant) (m/s)
                                                          - Sommet départ
                                                          - Sommet d'arivée
                                            *)
@@ -36,6 +37,12 @@ let (--) d1 d2 = match d1, d2 with
   | Indef, _ -> Indef
   | _, Indef -> Indef
   | D(x), D(y) -> D(abs (x - y))
+;;
+
+let (>>) d1 d2 = match d1, d2 with
+  | Indef, _ -> true
+  | _, Indef -> false
+  | D(x), D(y) -> x>y
 ;;
 
 let dist_to_int d = match d with
@@ -66,13 +73,13 @@ let get_distance graph departure arrival =
 
 (* Fonction qui donne la distance jusqu'à l'arrivée *)
 let get_dist_to_dest graph car = match car with
-  | P(vit, dist, stat) -> Indef
-  | V(tmps_opt, tmps_circ, vit_act, vit_moy, stat_dep, stat_arr) -> (get_distance graph stat_dep stat_arr) -- (D(tmps_circ*vit_moy));
+  | P(_, _, _) -> Indef
+  | V(_, tmps_circ, _, vit_moy, stat_dep, stat_arr) -> (get_distance graph stat_dep stat_arr) -- (D(tmps_circ*vit_moy));
 ;;
 
 let get_dist_to_dest_idx graph index car_array = match car_array.(index) with
-  | P(vit, dist, stat) -> Indef
-  | V(tmps_opt, tmps_circ, vit_act, vit_moy, stat_dep, stat_arr) -> (get_distance graph stat_dep stat_arr) -- (D(tmps_circ*vit_moy));
+  | P(_, _, _) -> Indef
+  | V(_, tmps_circ, _, vit_moy, stat_dep, stat_arr) -> (get_distance graph stat_dep stat_arr) -- (D(tmps_circ*vit_moy));
 ;;
 (* Fonction qui donne la distance jusqu'à la prochaine voiture *)
 (* Automobile -> voiture ou pad *)
@@ -80,7 +87,7 @@ let get_dist_to_dest_idx graph index car_array = match car_array.(index) with
 let get_next_automobile index automobile_array = automobile_array.((index + 1) mod (Array.length automobile_array))
 ;;
 
-let rec distance_to_next_automobile graph index automobile_array =
+let distance_to_next_automobile graph index automobile_array =
   let n = Array.length automobile_array in
   if n < 2 then
     Indef
@@ -103,16 +110,39 @@ let rec distance_to_next_automobile graph index automobile_array =
     | P(_, dist_p1, stat_p1),  P(_, dist_p2, stat_p2) ->
       (* Cas où on a un pad et un pad devant *)
       let dist_btw_statP1_statP2 = get_distance graph stat_p1 stat_p2 in
-      dist_p1 -- (dist_p1 ++ (dist_btw_statP1_statP2))
+      dist_p1 -- (dist_p2 ++ (dist_btw_statP1_statP2))
 ;;
+
 
 
 
 (* Fonction qui donne la vitesse actuelle de la voiture *)
 let speed_control graph index automobile_array dt =
-  let free_distance = distance_to_next_automobile graph index automobile_array in
-  5;;
+  let dist_to_next_auto = distance_to_next_automobile graph index automobile_array in
+  let dist_to_dest  = get_dist_to_dest_idx graph index automobile_array in
+  let next_auto = get_next_automobile index automobile_array in
+  let auto = automobile_array.(index) in
 
+  (* let get_impact_time v1 v2 distance = (dist_to_int distance)/(abs (v1-v2)) in *)
+  let get_max_speed_no_impact v2 distance = max v_max ((max ((dist_to_int distance)-2) 0)/dt) + v2 in (* 2 m distance min *)
+  let get_new_speed speed max_speed = min (abs (speed - max_speed)) a_max*dt in
+
+  if dist_to_dest >> dist_to_next_auto then
+    begin
+      match auto, next_auto with
+      | V(_,_,v1,_,_,_), P(v2, _, _) -> get_new_speed v1 (get_max_speed_no_impact v2 dist_to_next_auto)
+      | V(_,_,v1,_,_,_), V(_,_,v2,_,_,_) -> get_new_speed v1 (get_max_speed_no_impact v2 dist_to_next_auto)
+      | P(v1, _, _), V(_,_,v2,_,_,_) -> get_new_speed v1 (get_max_speed_no_impact v2 dist_to_next_auto)
+      | P(v1, _, _), P(v2, _, _) -> get_new_speed v1 (get_max_speed_no_impact v2 dist_to_next_auto)
+    end
+  else
+    begin
+      match auto with
+      | V(_,_,v1,_,_,_)-> get_new_speed v1 (get_max_speed_no_impact 0 dist_to_dest)
+      | P(v1, _, _) -> get_new_speed v1 (get_max_speed_no_impact 0 dist_to_dest)
+    end
+
+;;
 (* Fonction qui affiche une voiture *)
 let disp_car car = match car with
   | P(vit, dist, stat) ->
@@ -132,7 +162,7 @@ let disp_car car = match car with
     print_string "Temps optimal (s): "; print_int tmps_opt; print_newline ();
     print_string "Temps dans le circuit (s): "; print_int tmps_circ; print_newline ();
     print_string "Vitesse actuelle (m/s): "; print_int vit_act; print_newline ();
-    print_string "Vitesse moyenne (m/s): "; print_int vit_moy; print_newline ();
+    print_string "Vitesse moyenne x10^6 (m/s): "; print_int vit_moy; print_newline ();
     print_string "Station de départ: "; print_int stat_dep; print_newline ();
     print_string "Station d'arrivé: "; print_int stat_arr; print_newline ();
     print_string "=========================================================="; print_newline ();
@@ -147,7 +177,7 @@ let sim_terminate_on_exit_no_entry graph car_array dt stop_time =
     let rec aux acc i =
       if i < num_cars then
         match car_array.(i) with
-        | P(vit_act, dist_p, stat_p) -> aux acc (i+1)
+        | P(_, _, _) -> aux acc (i+1)
         | V(tmps_opt, _, _, _, _, _) -> aux (acc + tmps_opt) (i+1)
       else acc
     in 2*(aux 0 0)
@@ -219,7 +249,7 @@ let sim_terminate_on_exit_no_entry graph car_array dt stop_time =
         (* On met à jour les données de chaque voiture. *)
         for i=0 to (num_cars-1) do
           match car_array.(i) with
-          | P(vit_act, dist_p, stat_p) ->
+          | P(_, dist_p, stat_p) ->
             let speed = speed_control graph i car_array dt in
             let dist = dist_p -- (D(speed*dt)) in (* Ici interviennent les défauts de la discretisation, on considére que la voiture arrive à la vitesse demandé instantanement. C'est pour ça que le speed control doit être bein fait.  *)
             if (dist_to_int dist) = 0 then
@@ -228,7 +258,7 @@ let sim_terminate_on_exit_no_entry graph car_array dt stop_time =
             else
               let next_station = stat_p in
               car_array.(i) <- P(speed, dist, next_station);
-          | V(tmps_opt, tmps_circ, vit_act, vit_moy, stat_dep, stat_arr) ->
+          | V(tmps_opt, tmps_circ, _, vit_moy, stat_dep, stat_arr) ->
             let dist_to_dest = get_dist_to_dest_idx graph i car_array in
             if ((dist_to_int dist_to_dest) = 10)&&(stop_array.(i) <> (-1) ) then (* stop array = -1 si la voiture s'est déjà arrêté. Attention aux erreurs de discretisation, il faudrait peut être un intervalle car la voiture pourrait ne pas s'arrêter exactement à la station *)
               begin
@@ -236,13 +266,13 @@ let sim_terminate_on_exit_no_entry graph car_array dt stop_time =
                   begin
                     stop_array.(i) <- stop_time / dt;
                     let speed = 0 in
-                    car_array.(i) <- V(tmps_opt, tmps_circ+dt, 0, vit_moy*n/(n+1) + (fast_exp 2 (n-1))*speed/n*(n+1), stat_dep, stat_arr);
+                    car_array.(i) <- V(tmps_opt, tmps_circ+dt, 0, vit_moy*n/(n+1) + speed/(n+1), stat_dep, stat_arr);
                   end
                 else if stop_array.(i) = (-1) then (* Si la voiture doit repartir *)
                   begin
                     stop_array.(i) <- 0;
                     let speed = speed_control graph i car_array dt in
-                    car_array.(i) <- V(tmps_opt, tmps_circ+dt, speed, vit_moy*n/(n+1) + (fast_exp 2 (n-1))*speed/n*(n+1), stat_dep, stat_arr)
+                    car_array.(i) <- V(tmps_opt, tmps_circ+dt, speed, vit_moy*n/(n+1) + speed/(n+1), stat_dep, stat_arr)
                   end
                 else if stop_array.(i) = 1 then             (* Si la voiture est à l'arrêt mais va reparit la prochaine ittération, la voiture se transforme en pad. *)
                   begin
@@ -256,7 +286,7 @@ let sim_terminate_on_exit_no_entry graph car_array dt stop_time =
                   begin
                     stop_array.(i) <- (stop_array.(i) - 1);
                     let speed = 0 in
-                    car_array.(i) <- V(tmps_opt, tmps_circ+dt, 0, vit_moy*n/(n+1) + (fast_exp 2 (n-1))*speed/n*(n+1), stat_dep, stat_arr)
+                    car_array.(i) <- V(tmps_opt, tmps_circ+dt, 0, vit_moy*n/(n+1) + speed/(n+1), stat_dep, stat_arr)
                   end
               end
         done;
@@ -274,15 +304,29 @@ let sim_terminate_on_exit_no_entry graph car_array dt stop_time =
 (* Implementaiton du graph à 3 sommets. *)
 let graph = Array.make_matrix 3 3 (D(-1)) ;;
 
+graph.(0).(0) <- (D(0));;
+graph.(0).(1) <- (D(30000));;
+graph.(0).(2) <- Indef;;
+
+graph.(1).(1) <- (D(0));;
+graph.(1).(0) <- Indef;;
+graph.(1).(2) <- (D(15000));;
+
+graph.(2).(2) <- (D(0));;
+graph.(2).(0) <- (D(10000));;
+graph.(2).(1) <- Indef;;
+
+let v0_1 = V((dist_to_int (get_distance graph 0 1))/v_max,0,0,0,0,1);;
+disp_car v0_1;;
 let v1_2 = V((dist_to_int (get_distance graph 1 2))/v_max,0,0,0,1,2);;
 disp_car v1_2;;
-let v2_3 = V((dist_to_int (get_distance graph 2 3))/v_max,0,0,0,2,3);;
-let v1_3 = V((dist_to_int (get_distance graph 1 3))/v_max,0,0,0,1,3);;
-let v3_1 = V((dist_to_int (get_distance graph 3 1))/v_max,0,0,0,3,1);;
+let v0_2 = V((dist_to_int (get_distance graph 0 2))/v_max,0,0,0,0,2);;
+disp_car v0_2;;
+let v2_0 = V((dist_to_int (get_distance graph 2 0))/v_max,0,0,0,2,0);;
+disp_car v2_0;;
 
-let car_array = [| v1_2; v2_3; v1_3; v3_1 |];;
+let car_array = [| v0_1; v1_2; v0_2; v2_0 |];;
 
+sim_terminate_on_exit_no_entry graph car_array dt stop_time;;
 
-graph;;
-disp_car v2_3;;
 
