@@ -3,7 +3,7 @@ Printexc.record_backtrace true;;
 let v_max = 100.0 ;;                (* m/s *)
 let a_max  = 9.81;;                  (* m/s² *)
 let stop_time = 15.0;;              (* s *)
-let dt = 1.0;;                      (* s⁻¹ *)
+let dt = 0.1;;                      (* s⁻¹ *)
 
 type distance = Indef | D of float;; (* Distance in meters, distance non algebrique *)
 
@@ -145,6 +145,10 @@ let speed_control graph index automobile_array dt =
     end
 ;;
 
+(* let speed_control graph index automobile_array dt =
+ * 
+ * ;; *)
+
 (* Fonction qui affiche une voiture *)
 let disp_car car = match car with
   | P(vit, dist, stat) ->
@@ -181,7 +185,7 @@ let sim_terminate_on_exit_no_entry graph car_array dt stop_time timeout =
         | P(_, _, _) -> aux acc (i+1)
         | V(tmps_opt, _, _, _, _, _) -> aux (acc +. tmps_opt) (i+1)
       else acc
-    in int_of_float (2.0*.(aux 0.0 0)/.dt)
+    in int_of_float (4.0*.(aux 0.0 0)/.dt)
   in
 
   let num_cars = Array.length car_array in
@@ -237,7 +241,11 @@ let sim_terminate_on_exit_no_entry graph car_array dt stop_time timeout =
     (* Writing data to file *)
     for iter = 0 to dim -1 do
       for col = 0 to (6*num_cars - 1) do
-        Printf.fprintf oc "%f," data.(iter).(col);
+        if not (((col mod 6) = 4)||((col mod 6) = 5)) then (
+          Printf.fprintf oc "%f," data.(iter).(col);
+        )
+        else
+          Printf.fprintf oc "%d," (int_of_float data.(iter).(col));
       done;
       Printf.fprintf oc "%d\n" iter;
     done;
@@ -318,17 +326,30 @@ let sim_terminate_on_exit_no_entry graph car_array dt stop_time timeout =
 (* Implementaiton du graph à 3 sommets. *)
 let graph = Array.make_matrix 3 3 (D(-1.0)) ;;
 
+(* graph.(0).(0) <- (D(0.0));;
+ * graph.(0).(1) <- (D(3000.0));;
+ * graph.(0).(2) <- Indef;;
+ * 
+ * graph.(1).(1) <- (D(0.0));;
+ * graph.(1).(0) <- Indef;;
+ * graph.(1).(2) <- (D(1500.0));;
+ * 
+ * graph.(2).(2) <- (D(0.0));;
+ * graph.(2).(0) <- (D(1000.0));;
+ * graph.(2).(1) <- Indef;; *)
+
+
 graph.(0).(0) <- (D(0.0));;
-graph.(0).(1) <- (D(3000.0));;
-graph.(0).(2) <- Indef;;
+graph.(0).(1) <- (D(30000.0));;
+graph.(0).(2) <- (D(45000.0));;
 
 graph.(1).(1) <- (D(0.0));;
-graph.(1).(0) <- Indef;;
-graph.(1).(2) <- (D(1500.0));;
+graph.(1).(0) <- (D(25000.0));;
+graph.(1).(2) <- (D(15000.0));;
 
 graph.(2).(2) <- (D(0.0));;
-graph.(2).(0) <- (D(1000.0));;
-graph.(2).(1) <- Indef;;
+graph.(2).(0) <- (D(10000.0));;
+graph.(2).(1) <- (D(40000.0));;
 
 let v0_1 = V((dist_to_float (get_distance graph 0 1))/.v_max,0.0,0.0,0.0,0,1);;
 disp_car v0_1;;
@@ -339,8 +360,8 @@ disp_car v0_2;;
 let v2_0 = V((dist_to_float (get_distance graph 2 0))/.v_max,0.0,0.0,0.0,2,0);;
 disp_car v2_0;;
 
-let car_array_init = [| v0_1; v1_2; v0_2; v2_0 |];;
+let car_array_init = [| v2_0 |];;
 
-sim_terminate_on_exit_no_entry graph car_array_init dt stop_time 2000;;
+sim_terminate_on_exit_no_entry graph car_array_init dt stop_time 20000;;
 
 
